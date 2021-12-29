@@ -121,7 +121,28 @@ float Volume::getSampleNearestNeighbourInterpolation(const glm::vec3& coord) con
 // This function returns the trilinear interpolated value at the continuous 3D position given by coord.
 float Volume::getSampleTriLinearInterpolation(const glm::vec3& coord) const
 {
-    return 0.0f;
+    // check if the coordinate is within volume boundaries, since we only look at direct neighbours we only need to check within 0.5
+    if (glm::any(glm::lessThan(coord + 0.5f, glm::vec3(0))) || glm::any(glm::greaterThanEqual(coord + 0.5f, glm::vec3(m_dim))))
+        return 0.0f;
+
+    // Round 3.6 to 3
+    auto roundDown = [](float f) {
+        return static_cast<int>(f);
+    };
+    // Round 3.6 to 4
+    auto roundUp = [](float f) {
+        return static_cast<int>(f + 0.5f);
+    };
+    // Return 0.6 from 3.6
+    auto getFactor = [](float f) {
+        return f - static_cast<int>(f);
+    };
+    
+    glm::vec2 xyCoord(coord.x, coord.y);
+    float zDownInterpolatedValue = biLinearInterpolate(xyCoord, roundDown(coord.z));
+    float zUpInterpolatedValue = biLinearInterpolate(xyCoord, roundUp(coord.z));
+
+    return linearInterpolate(zDownInterpolatedValue, zUpInterpolatedValue, getFactor(coord.z));
 }
 
 // This function linearly interpolates the value at X using incoming values g0 and g1 given a factor (equal to the positon of x in 1D)
@@ -130,13 +151,36 @@ float Volume::getSampleTriLinearInterpolation(const glm::vec3& coord) const
 //   factor
 float Volume::linearInterpolate(float g0, float g1, float factor)
 {
-    return 0.0f;
+    // Assuming factor = dist(g0, X)/dist(g0, g1)
+    return (g0 * (1.0f - factor)) + (g1 * factor);
 }
 
 // This function bi-linearly interpolates the value at the given continuous 2D XY coordinate for a fixed integer z coordinate.
 float Volume::biLinearInterpolate(const glm::vec2& xyCoord, int z) const
 {
-    return 0.0f;
+    // Round 3.6 to 3
+    auto roundDown = [](float f) {
+        return static_cast<int>(f);
+    };
+    // Round 3.6 to 4
+    auto roundUp = [](float f) {
+        return static_cast<int>(f + 0.5f);
+    };
+    // Return 0.6 from 3.6
+    auto getFactor = [](float f) {
+        return f - static_cast<int>(f);
+    };
+
+    float yDownInterpolatedValue = linearInterpolate(
+        getVoxel(roundDown(xyCoord.x), roundDown(xyCoord.y), z),
+        getVoxel(roundUp(xyCoord.x), roundDown(xyCoord.y), z),
+        getFactor(xyCoord.x));
+    float yUpInterpolatedValue = linearInterpolate(
+        getVoxel(roundDown(xyCoord.x), roundUp(xyCoord.y), z),
+        getVoxel(roundUp(xyCoord.x), roundUp(xyCoord.y), z),
+        getFactor(xyCoord.x));
+
+    return linearInterpolate(yDownInterpolatedValue, yUpInterpolatedValue, getFactor(xyCoord.y));
 }
 
 
