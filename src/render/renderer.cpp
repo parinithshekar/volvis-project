@@ -176,7 +176,30 @@ glm::vec4 Renderer::traceRayMIP(const Ray& ray, float sampleStep) const
 glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
 {
     static constexpr glm::vec3 isoColor { 0.8f, 0.8f, 0.2f };
-    return glm::vec4(isoColor, 1.0f);
+    static constexpr glm::vec3 blackColor { 0.0f, 0.0f, 0.0f };
+
+    // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
+    glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
+    const glm::vec3 increment = sampleStep * ray.direction;
+    for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
+        const float val = m_pVolume->getSampleInterpolate(samplePos);
+        if (val >= m_config.isoValue) {
+            // TODO get more precise position for surface with bisection algorithm
+            glm::vec3 accuratePos(samplePos);
+            
+            if (m_config.volumeShading) {
+                // TODO clarify light and viewer position is same
+                volume::GradientVoxel gradient(m_pGradientVolume->getGradientInterpolate(accuratePos));
+                glm::vec3 L(m_pCamera->position());
+                glm::vec3 V(m_pCamera->position());
+                return glm::vec4(computePhongShading(isoColor, gradient, L, V), 1.0f);
+            } else {
+                return glm::vec4(isoColor, 1.0f);
+            }
+        }
+    }
+    // Rays that do not pass through a surface (ISO below threshold) give black pixels
+    return glm::vec4(blackColor, 1.0f);
 }
 
 // ======= TODO: IMPLEMENT ========
@@ -196,8 +219,37 @@ float Renderer::bisectionAccuracy(const Ray& ray, float t0, float t1, float isoV
 // Use the given color for the ambient/specular/diffuse (you are allowed to scale these constants by a scalar value).
 // You are free to choose any specular power that you'd like.
 glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::GradientVoxel& gradient, const glm::vec3& L, const glm::vec3& V)
-{
-    return glm::vec3(0.0f);
+{   
+    // IMPORTANT to calculate cosTheta and cosPhi
+    // L is directed from light source towards the surface
+    // V is directed from the observer towards the surface
+    // gradient.dir is the normal of the surface directed away from the surface
+    
+    // Phong weights
+    float ka = 0.1f, kd = 0.7f, ks = 0.2f, a = 100.0f;
+    
+    // Normalize vectors for calculations
+    glm::vec3 n(glm::normalize(gradient.dir));
+    glm::vec3 l(glm::normalize(L));
+    glm::vec3 v(glm::normalize(V));
+    
+    // Assume white light
+    glm::vec3 white(1.0f, 1.0f, 1.0f);
+    
+    // Ambient
+    glm::vec3 ambient((white * color) * ka);
+    
+    // Diffuse
+    float cosTheta = glm::dot(-l, n);
+    glm::vec3 diffuse(((white * color) * kd) * cosTheta);
+    
+    // Specular
+    // reflected ray of light (https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector)
+    glm::vec3 lr(glm::normalize(l - (2 * cosTheta * n)));
+    float cosPhi = glm::dot(lr, -v);
+    glm::vec3 specular(((white * color) * ks) * std::pow(cosPhi, a));
+
+    return ambient + diffuse + specular;
 }
 
 // ======= TODO: IMPLEMENT ========
