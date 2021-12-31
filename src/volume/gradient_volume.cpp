@@ -115,7 +115,48 @@ GradientVoxel GradientVolume::getGradientNearestNeighbor(const glm::vec3& coord)
 // Use the linearInterpolate function that you implemented below.
 GradientVoxel GradientVolume::getGradientLinearInterpolate(const glm::vec3& coord) const
 {
-    return GradientVoxel {};
+    // Ignore coordinates outside the viewbox
+    if (glm::any(glm::lessThan(coord, glm::vec3(0))) || glm::any(glm::greaterThanEqual(coord, glm::vec3(m_dim))))
+        return { glm::vec3(0.0f), 0.0f };
+
+    // Round 3.6 to 3
+    auto roundDown = [](float f) {
+        return static_cast<int>(f);
+    };
+    // Round 3.6 to 4
+    auto roundUp = [](float f) {
+        return static_cast<int>(f + 0.5f);
+    };
+    // Return 0.6 from 3.6
+    auto getFactor = [](float f) {
+        return f - static_cast<int>(f);
+    };
+
+    float xDown = roundDown(coord.x), xUp = roundUp(coord.x);
+    float yDown = roundDown(coord.y), yUp = roundUp(coord.y);
+    float zDown = roundDown(coord.z), zUp = roundUp(coord.z);
+
+    // 8 points around the given 3D float coordinate
+    // NOTE If you have a better naming scheme, please change this
+    GradientVoxel xDyDzD = getGradient(xDown, yDown, zDown);
+    GradientVoxel xUyDzD = getGradient(xUp, yDown, zDown);
+    GradientVoxel xDyUzD = getGradient(xDown, yUp, zDown);
+    GradientVoxel xUyUzD = getGradient(xUp, yUp, zDown);
+    GradientVoxel xDyDzU = getGradient(xDown, yDown, zUp);
+    GradientVoxel xUyDzU = getGradient(xUp, yDown, zUp);
+    GradientVoxel xDyUzU = getGradient(xDown, yUp, zUp);
+    GradientVoxel xUyUzU = getGradient(xUp, yUp, zUp);
+
+    // bilinear interpolation for lower XY plane
+    GradientVoxel xyDzD = linearInterpolate(xDyDzD, xUyDzD, getFactor(coord.x));
+    GradientVoxel xyUzD = linearInterpolate(xDyUzD, xUyUzD, getFactor(coord.x));
+    GradientVoxel xyzD = linearInterpolate(xyDzD, xyUzD, getFactor(coord.y));
+    // bilinear interpolation for upper XY plane
+    GradientVoxel xyDzU = linearInterpolate(xDyDzU, xUyDzU, getFactor(coord.x));
+    GradientVoxel xyUzU = linearInterpolate(xDyUzU, xUyUzU, getFactor(coord.x));
+    GradientVoxel xyzU = linearInterpolate(xyDzU, xyUzU, getFactor(coord.y));
+    // trilinear interpolation
+    return linearInterpolate(xyzD, xyzU, getFactor(coord.z));
 }
 
 // ======= TODO : IMPLEMENT ========
@@ -123,7 +164,9 @@ GradientVoxel GradientVolume::getGradientLinearInterpolate(const glm::vec3& coor
 // At t=0, linearInterpolate should return g0 and at t=1 it returns g1.
 GradientVoxel GradientVolume::linearInterpolate(const GradientVoxel& g0, const GradientVoxel& g1, float factor)
 {
-    return GradientVoxel {};
+    // Assuming factor = dist(g0, X)/dist(g0, g1)
+    glm::vec3 newG = (g0.dir * g0.magnitude * (1.0f - factor)) + (g1.dir * g1.magnitude * factor);
+    return GradientVoxel { glm::normalize(newG), glm::length(newG) };
 }
 
 // This function returns a gradientVoxel without using interpolation

@@ -184,12 +184,12 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
     for (float t = ray.tmin; t <= ray.tmax; t += sampleStep, samplePos += increment) {
         const float val = m_pVolume->getSampleInterpolate(samplePos);
         if (val >= m_config.isoValue) {
-            // TODO get more precise position for surface with bisection algorithm
-            glm::vec3 accuratePos(samplePos);
-            
+            // Get more precise position for surface with bisection algorithm
+            float tOptimal = bisectionAccuracy(ray, t - sampleStep, t, m_config.isoValue);
+            glm::vec3 optimalPos = ray.origin + tOptimal * ray.direction;
             if (m_config.volumeShading) {
                 // TODO clarify light and viewer position is same
-                volume::GradientVoxel gradient(m_pGradientVolume->getGradientInterpolate(accuratePos));
+                volume::GradientVoxel gradient(m_pGradientVolume->getGradientInterpolate(optimalPos));
                 glm::vec3 L(m_pCamera->position());
                 glm::vec3 V(m_pCamera->position());
                 return glm::vec4(computePhongShading(isoColor, gradient, L, V), 1.0f);
@@ -208,7 +208,35 @@ glm::vec4 Renderer::traceRayISO(const Ray& ray, float sampleStep) const
 // iterations such that it does not get stuck in degerate cases.
 float Renderer::bisectionAccuracy(const Ray& ray, float t0, float t1, float isoValue) const
 {
-    return 0.0f;
+    // t1 closely matches required iso value
+    float t1Val = m_pVolume->getSampleInterpolate(ray.origin + t1 * ray.direction);
+    if (abs(t1Val - isoValue) < 0.01f)
+        return t1;
+
+    // Limit max bisections
+    const int maxBisections = 5;
+
+    // If a more accurate value isn't found, t1 is the best estimate of the surface
+    float accurateT = t1;
+    // Mimic binary search algorithm
+    float th = t1, tl = t0, tm = t1;
+    for (int i = 0; i < maxBisections; i++) {
+        tm = (th + tl) / 2.0f;
+        glm::vec3 newPos = ray.origin + tm * ray.direction;
+        float val = m_pVolume->getSampleInterpolate(newPos);
+        if (abs(val - isoValue) < 0.01f) {
+            accurateT = tm;
+            break;
+        }
+        else if (val < isoValue)
+            tl = tm;
+        else {
+            // Update answer only if current tm position crosses required ISO value
+            accurateT = tm;
+            th = tm;
+        }
+    }
+    return accurateT;
 }
 
 // ======= TODO: IMPLEMENT ========
