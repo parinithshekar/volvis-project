@@ -285,7 +285,28 @@ glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::Gr
 // Use getTFValue to compute the color for a given volume value according to the 1D transfer function.
 glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
 {
-    return glm::vec4(0.0f);
+    // NOTE This function uses front to back compositing with apparent absorption A'
+    glm::vec4 compositeColor(0.0f);
+    // Stop when this reaches close to 1
+    float aPrime = 0.0f;
+    
+    // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
+    glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
+    const glm::vec3 increment = sampleStep * ray.direction;
+    for (float i = ray.tmin; i <= ray.tmax; i += sampleStep, samplePos += increment) {
+        const float sampleVal = m_pVolume->getSampleInterpolate(samplePos);
+        glm::vec4 sampleTFColor = getTFValue(sampleVal);
+        //Update compositeColor (ci and ai) using sampleTFColor
+        // Opacity weighted colors
+        sampleTFColor *= glm::vec4(glm::vec3(sampleTFColor.w), 1.0f);
+        // Update composite colors
+        compositeColor += (1 - aPrime) * sampleTFColor;
+        aPrime = compositeColor.w;
+        // Break if accumulated apparent absorption reaches ~1
+        if (aPrime > 0.99f)
+            break;
+    }
+    return compositeColor;
 }
 
 // ======= DO NOT MODIFY THIS FUNCTION ========
