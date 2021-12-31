@@ -296,10 +296,19 @@ glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
     for (float i = ray.tmin; i <= ray.tmax; i += sampleStep, samplePos += increment) {
         const float sampleVal = m_pVolume->getSampleInterpolate(samplePos);
         glm::vec4 sampleTFColor = getTFValue(sampleVal);
-        //Update compositeColor (ci and ai) using sampleTFColor
         // Opacity weighted colors
         sampleTFColor *= glm::vec4(glm::vec3(sampleTFColor.w), 1.0f);
-        // Update composite colors
+        // TODO Fix phong shading
+        if (m_config.volumeShading) {
+            sampleTFColor = glm::vec4(
+                computePhongShading(
+                    glm::vec3(sampleTFColor),
+                    m_pGradientVolume->getGradientInterpolate(samplePos),
+                    samplePos - m_pCamera->position(),
+                    samplePos - m_pCamera->position()),
+                sampleTFColor.w);
+        }
+        // Update compositeColor (ci and ai) using sampleTFColor
         compositeColor += (1 - aPrime) * sampleTFColor;
         aPrime = compositeColor.w;
         // Break if accumulated apparent absorption reaches ~1
@@ -325,7 +334,41 @@ glm::vec4 Renderer::getTFValue(float val) const
 // Use the getTF2DOpacity function that you implemented to compute the opacity according to the 2D transfer function.
 glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
 {
-    return glm::vec4(0.0f);
+    // NOTE This function uses front to back compositing with apparent absorption A'
+    glm::vec4 compositeColor(0.0f);
+    // Stop when this reaches close to 1
+    float aPrime = 0.0f;
+
+    // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
+    glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
+    const glm::vec3 increment = sampleStep * ray.direction;
+    for (float i = ray.tmin; i <= ray.tmax; i += sampleStep, samplePos += increment) {
+        // Get intensity and gradient for this sample
+        const float sampleVal = m_pVolume->getSampleInterpolate(samplePos);
+        const volume::GradientVoxel sampleGradient = m_pGradientVolume->getGradientInterpolate(samplePos);
+        // Get color and opacity for sample
+        glm::vec4 sampleTFColor = m_config.TF2DColor;
+        sampleTFColor.w = getTF2DOpacity(sampleVal, sampleGradient.magnitude);
+        // Opacity weighted colors
+        sampleTFColor *= glm::vec4(glm::vec3(sampleTFColor.w), 1.0f);
+        // TODO Fix phong shading
+        if (m_config.volumeShading) {
+            sampleTFColor = glm::vec4(
+                computePhongShading(
+                    glm::vec3(sampleTFColor),
+                    m_pGradientVolume->getGradientInterpolate(samplePos),
+                    samplePos - m_pCamera->position(),
+                    samplePos - m_pCamera->position()),
+                sampleTFColor.w);
+        }
+        // Update compositeColor (ci and ai) using sampleTFColor
+        compositeColor += (1 - aPrime) * sampleTFColor;
+        aPrime = compositeColor.w;
+        // Break if accumulated apparent absorption reaches ~1
+        if (aPrime > 0.99f)
+            break;
+    }
+    return compositeColor;
 }
 
 // ======= TODO: IMPLEMENT ========
@@ -337,7 +380,26 @@ glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
 // The 2D transfer function settings can be accessed through m_config.TF2DIntensity and m_config.TF2DRadius.
 float Renderer::getTF2DOpacity(float intensity, float gradientMagnitude) const
 {
-    return 0.0f;
+    float offset = abs(intensity - m_config.TF2DIntensity);
+    // Opacity gradually reduces from 1 at triangle center to 0 at the end of triangle
+    if (inTriangle(intensity, gradientMagnitude))
+        return (m_config.TF2DRadius - offset) / m_config.TF2DRadius;
+    else
+        return 0.0f;
+}
+
+bool Renderer::inTriangle(float sampleIntensity, float sampleGradientMagnitude) const
+{
+    float maxG = m_pGradientVolume->maxMagnitude(), minG = m_pGradientVolume->minMagnitude();
+    float triangleCenter = m_config.TF2DIntensity, triangleRadius = m_config.TF2DRadius;
+
+    float offset = abs(sampleIntensity - triangleCenter);
+    // Sample outside the triangle radius
+    if (offset >= triangleRadius)
+        return false;
+    // 
+    float minGradientRequired = minG + (offset / triangleRadius) * (maxG - minG);
+    return (sampleGradientMagnitude >= minGradientRequired);
 }
 
 // This function computes if a ray intersects with the axis-aligned bounding box around the volume.
