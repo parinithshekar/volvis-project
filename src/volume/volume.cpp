@@ -188,6 +188,13 @@ float Volume::biLinearInterpolate(const glm::vec2& xyCoord, int z) const
 // This function represents the h(x) function, which returns the weight of the cubic interpolation kernel for a given position x
 float Volume::weight(float x)
 {
+    float a = -1.0f;
+    x = glm::abs(x);
+    if (x < 1) {
+        return ((a + 2) * glm::pow(x, 3)) - ((a + 3) * glm::pow(x, 2)) + 1;
+    } else if (x < 2) {
+        return (a * glm::pow(x, 3)) - (5 * a * glm::pow(x, 2)) + (8 * a * x) - (4 * a);
+    }
     return 0.0f;
 }
 
@@ -195,21 +202,105 @@ float Volume::weight(float x)
 // This functions returns the results of a cubic interpolation using 4 values and a factor
 float Volume::cubicInterpolate(float g0, float g1, float g2, float g3, float factor)
 {
-    return 0.0f;
+    // g0------g1--X---g2------g3
+    // Assuming factor = dist(g1, X)/dist(g1, g2)
+    // As dist(g1, g2) is 1, factor is dist(g1, X)
+    float result = 0.0f;
+    result += g0 * weight(1 + factor);
+    result += g1 * weight(factor);
+    result += g2 * weight(1 - factor);
+    result += g3 * weight(2 - factor);
+    return result;
 }
 
 // ======= OPTIONAL : This functions can be used to implement cubic interpolation ========
 // This function returns the value of a bicubic interpolation
 float Volume::biCubicInterpolate(const glm::vec2& xyCoord, int z) const
-{
-    return 0.0f;
+{   
+    // Round 3.6 to 3
+    auto roundDown = [](float f) {
+        return static_cast<int>(f);
+    };
+    // Round 3.6 to 4
+    auto roundUp = [](float f) {
+        return static_cast<int>(f + 0.5f);
+    };
+    // Return 0.6 from 3.6
+    auto getFactor = [](float f) {
+        return f - static_cast<int>(f);
+    };
+
+    int x0 = glm::max(0, roundDown(xyCoord.x) - 1);
+    int x1 = roundDown(xyCoord.x);
+    int x2 = roundUp(xyCoord.x);
+    int x3 = glm::min(m_dim.x, roundUp(xyCoord.x) + 1);
+
+    int y0 = glm::max(0, roundDown(xyCoord.y) - 1);
+    int y1 = roundDown(xyCoord.y);
+    int y2 = roundUp(xyCoord.y);
+    int y3 = glm::min(m_dim.y, roundUp(xyCoord.y) + 1);
+
+    float y0InterpolatedValue = cubicInterpolate(
+        getVoxel(x0, y0, z),
+        getVoxel(x1, y0, z),
+        getVoxel(x2, y0, z),
+        getVoxel(x3, y0, z),
+        getFactor(xyCoord.x));
+    float y1InterpolatedValue = cubicInterpolate(
+        getVoxel(x0, y1, z),
+        getVoxel(x1, y1, z),
+        getVoxel(x2, y1, z),
+        getVoxel(x3, y1, z),
+        getFactor(xyCoord.x));
+    float y2InterpolatedValue = cubicInterpolate(
+        getVoxel(x0, y2, z),
+        getVoxel(x1, y2, z),
+        getVoxel(x2, y2, z),
+        getVoxel(x3, y2, z),
+        getFactor(xyCoord.x));
+    float y3InterpolatedValue = cubicInterpolate(
+        getVoxel(x0, y3, z),
+        getVoxel(x1, y3, z),
+        getVoxel(x2, y3, z),
+        getVoxel(x3, y3, z),
+        getFactor(xyCoord.x));
+
+    return cubicInterpolate(y0InterpolatedValue, y1InterpolatedValue, y2InterpolatedValue, y3InterpolatedValue, getFactor(xyCoord.y));
 }
 
 // ======= OPTIONAL : This functions can be used to implement cubic interpolation ========
 // This function computes the tricubic interpolation at coord
 float Volume::getSampleTriCubicInterpolation(const glm::vec3& coord) const
 {
-    return 0.0f;
+    // check if the coordinate is within volume boundaries, since we look at 2 neighbours on each side we need to check within 1.5
+    if (glm::any(glm::lessThan(coord + 1.5f, glm::vec3(0))) || glm::any(glm::greaterThanEqual(coord + 1.5f, glm::vec3(m_dim))))
+        return 0.0f;
+
+    // Round 3.6 to 3
+    auto roundDown = [](float f) {
+        return static_cast<int>(f);
+    };
+    // Round 3.6 to 4
+    auto roundUp = [](float f) {
+        return static_cast<int>(f + 0.5f);
+    };
+    // Return 0.6 from 3.6
+    auto getFactor = [](float f) {
+        return f - static_cast<int>(f);
+    };
+
+    int z0 = glm::max(0, roundDown(coord.z) - 1);
+    int z1 = roundDown(coord.z);
+    int z2 = roundUp(coord.z);
+    int z3 = glm::min(m_dim.z, roundUp(coord.z) + 1);
+
+    glm::vec2 xyCoord(coord.x, coord.y);
+    float z0InterpolatedValue = biCubicInterpolate(xyCoord, z0);
+    float z1InterpolatedValue = biCubicInterpolate(xyCoord, z1);
+    float z2InterpolatedValue = biCubicInterpolate(xyCoord, z2);
+    float z3InterpolatedValue = biCubicInterpolate(xyCoord, z3);
+
+    return cubicInterpolate(z0InterpolatedValue, z1InterpolatedValue, z2InterpolatedValue, z3InterpolatedValue, getFactor(coord.z));
 }
 
 // Load an fld volume data file
