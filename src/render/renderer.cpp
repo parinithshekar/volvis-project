@@ -257,7 +257,7 @@ glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::Gr
     float ka = 0.1f, kd = 0.7f, ks = 0.2f, a = 100.0f;
     
     // Normalize vectors for calculations
-    glm::vec3 n(glm::normalize(gradient.dir));
+    glm::vec3 n(-glm::normalize(gradient.dir));
     glm::vec3 l(glm::normalize(L));
     glm::vec3 v(glm::normalize(V));
     
@@ -268,16 +268,34 @@ glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::Gr
     glm::vec3 ambient((white * color) * ka);
     
     // Diffuse
-    float cosTheta = glm::dot(-l, n);
-    glm::vec3 diffuse(((white * color) * kd) * cosTheta);
+    //float cosTheta = glm::dot(-l, n);
+    float theta = std::max(0.0f, glm::dot(n, -l));
+    glm::vec3 diffuse(((white * color) * kd) * theta);
     
     // Specular
     // reflected ray of light (https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector)
-    glm::vec3 lr(glm::normalize(l - (2 * cosTheta * n)));
-    float cosPhi = glm::dot(lr, -v);
-    glm::vec3 specular(((white * color) * ks) * std::pow(cosPhi, a));
+    glm::vec3 refl = glm::normalize(glm::reflect(l, n));
+    //glm::vec3 lr(glm::normalize(l - (2 * cosTheta * n)));
+    //float cosPhi = glm::dot(lr, -v);
+    float phi = std::max(0.0f, glm::dot(-v, refl));
+    glm::vec3 specular(((white * color) * ks) * std::pow(phi, a));
 
     return ambient + diffuse + specular;
+
+    //glm::vec3 normal = -glm::normalize(gradient.dir);
+    //glm::vec3 l = glm::normalize(L);
+
+    //float theta = std::max(0.0f, glm::dot(normal, -l));
+    //float diffusion = kd * theta;
+
+    //glm::vec3 v = glm::normalize(V);
+    //glm::vec3 reflected = glm::normalize(glm::reflect(l, normal));
+
+    //float phi = std::max(0.0f, glm::dot(-v, reflected));
+    //float specular = ks * std::pow(phi, a);
+
+    //return color * (ka + diffusion + specular);
+
 }
 
 // ======= TODO: IMPLEMENT ========
