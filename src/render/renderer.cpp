@@ -257,7 +257,7 @@ glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::Gr
     float ka = 0.1f, kd = 0.7f, ks = 0.2f, a = 100.0f;
     
     // Normalize vectors for calculations
-    glm::vec3 n(-glm::normalize(gradient.dir));
+    glm::vec3 n(glm::normalize(gradient.dir));
     glm::vec3 l(glm::normalize(L));
     glm::vec3 v(glm::normalize(V));
     
