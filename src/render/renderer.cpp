@@ -360,8 +360,8 @@ glm::vec4 Renderer::traceRayTF2D(const Ray& ray, float sampleStep) const
                 computePhongShading(
                     glm::vec3(sampleTFColor),
                     m_pGradientVolume->getGradientInterpolate(samplePos),
-                    samplePos - m_pCamera->position(),
-                    samplePos - m_pCamera->position()),
+                    m_pCamera->position(),
+                    m_pCamera->position()),
                 sampleTFColor.w);
         }
         // Update compositeColor (ci and ai) using sampleTFColor
