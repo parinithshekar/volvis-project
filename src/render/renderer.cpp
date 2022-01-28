@@ -286,9 +286,9 @@ glm::vec3 Renderer::computePhongShading(const glm::vec3& color, const volume::Gr
 glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
 {
     // NOTE This function uses front to back compositing with apparent absorption A'
-    glm::vec4 compositeColor(0.0f);
+    glm::vec3 totalColor(0.0f);
     // Stop when this reaches close to 1
-    float aPrime = 0.0f;
+    float totalOpacity = 0.0f;
     
     // Incrementing samplePos directly instead of recomputing it each frame gives a measureable speed-up.
     glm::vec3 samplePos = ray.origin + ray.tmin * ray.direction;
@@ -298,24 +298,27 @@ glm::vec4 Renderer::traceRayComposite(const Ray& ray, float sampleStep) const
         glm::vec4 sampleTFColor = getTFValue(sampleVal);
         // Opacity weighted colors
         sampleTFColor *= glm::vec4(glm::vec3(sampleTFColor.w), 1.0f);
+        glm::vec3 currentColor;
         // TODO Fix phong shading
         if (m_config.volumeShading) {
-            sampleTFColor = glm::vec4(
-                computePhongShading(
-                    glm::vec3(sampleTFColor),
-                    m_pGradientVolume->getGradientInterpolate(samplePos),
-                    m_pCamera->position(),
-                    m_pCamera->position()),
-                sampleTFColor.w);
+            currentColor = computePhongShading(
+                glm::vec3(sampleTFColor.x, sampleTFColor.y, sampleTFColor.z),
+                m_pGradientVolume->getGradientInterpolate(samplePos),
+                m_pCamera->position(),
+                m_pCamera->position());
+        } else {
+            currentColor = glm::vec3(sampleTFColor.x, sampleTFColor.y, sampleTFColor.z);
         }
         // Update compositeColor (ci and ai) using sampleTFColor
-        compositeColor += (1 - aPrime) * sampleTFColor;
-        aPrime = compositeColor.w;
+        float currentOpacity = sampleTFColor.w;
+        totalColor += (1 - totalOpacity) * currentColor;
+        totalOpacity += (1 - totalOpacity) * currentOpacity;
         // Break if accumulated apparent absorption reaches ~1
-        if (aPrime > 0.99f)
+        if (totalOpacity > 0.99f)
             break;
     }
-    return compositeColor;
+    glm::vec4 finalResult(totalColor.x, totalColor.y, totalColor.z, totalOpacity);
+    return finalResult;
 }
 
 // ======= DO NOT MODIFY THIS FUNCTION ========
